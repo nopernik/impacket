@@ -379,7 +379,7 @@ def queryFsInformation(path, filename, level=None, pktFlags=smb.SMB.FLAGS2_UNICO
         return None
 
 
-def findFirst2(path, fileName, level, searchAttributes, pktFlags=smb.SMB.FLAGS2_UNICODE, isSMB2=False):
+def findFirst2(path, fileName, level, searchAttributes, pktFlags=smb.SMB.FLAGS2_UNICODE, isSMB2=False, isHidden=False):
     # TODO: Depending on the level, this could be done much simpler
 
     # Let's choose the right encoding depending on the request
@@ -390,6 +390,9 @@ def findFirst2(path, fileName, level, searchAttributes, pktFlags=smb.SMB.FLAGS2_
 
     fileName = normalize_path(fileName)
     pathName = os.path.join(path, fileName)
+    if isHidden:
+        if not os.path.isfile(pathName):
+            return [], 0, STATUS_SUCCESS
 
     if not isInFileJail(path, fileName):
         LOG.error("Path not in current working directory")
@@ -447,6 +450,8 @@ def findFirst2(path, fileName, level, searchAttributes, pktFlags=smb.SMB.FLAGS2_
             return searchResult, searchCount, STATUS_NOT_SUPPORTED
 
         (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(i)
+        if isHidden:
+            size = 0
         if os.path.isdir(i):
             item['ExtFileAttributes'] = smb.ATTR_DIRECTORY
         else:
@@ -3703,9 +3708,9 @@ class SMB2Commands:
 
         pathName = os.path.join(os.path.normpath(connData['OpenedFiles'][fileID]['FileName']), pattern)
         searchResult, searchCount, errorCode = findFirst2(os.path.dirname(pathName),
-                                                          os.path.basename(pathName),
-                                                          queryDirectoryRequest['FileInformationClass'],
-                                                          smb.ATTR_DIRECTORY, isSMB2=True)
+                                                        os.path.basename(pathName),
+                                                        queryDirectoryRequest['FileInformationClass'],
+                                                        smb.ATTR_DIRECTORY, isSMB2=True, isHidden=smbServer.isHidden)
 
         if errorCode != STATUS_SUCCESS:
             return [smb2.SMB2Error()], None, errorCode
@@ -4642,6 +4647,10 @@ class SMBSERVER(socketserver.ThreadingMixIn, socketserver.TCPServer):
         else:
             self.__SMB2Support = False
 
+        if self.__serverConfig.has_option("global", "isHidden"):
+            self.isHidden = self.__serverConfig.getboolean("global", "isHidden")
+        else:
+            self.isHidden = False
 
         if self.__serverConfig.has_option("global", "anonymous_logon"):
             self.__anonymousLogon = self.__serverConfig.getboolean("global", "anonymous_logon")
@@ -4937,6 +4946,14 @@ class SimpleSMBServer:
 
     def addCredential(self, name, uid, lmhash, nthash):
         self.__server.addCredential(name, uid, lmhash, nthash)
+    
+    def setHiddenServer(self, value):
+        if value is True:
+            self.__smbConfig.set("global", "isHidden", "True")
+        else:
+            self.__smbConfig.set("global", "isHidden", "False")
+        self.__server.setServerConfig(self.__smbConfig)
+        self.__server.processConfigFile()
 
     def setSMB2Support(self, value):
         if value is True:

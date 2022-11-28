@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('-ip', '--interface-address', action='store', default='0.0.0.0', help='ip address of listening interface')
     parser.add_argument('-port', action='store', default='445', help='TCP port for listening incoming connections (default 445)')
     parser.add_argument('-smb2support', action='store_true', default=False, help='SMB2 Support (experimental!)')
+    parser.add_argument('-hidden', action='store_true', default=False, help='Don\'t show files in directory listing')
 
     if len(sys.argv)==1:
         parser.print_help()
@@ -72,7 +73,7 @@ if __name__ == '__main__':
 
     server.addShare(options.shareName.upper(), options.sharePath, comment)
     server.setSMB2Support(options.smb2support)
-
+    server.setHiddenServer(options.hidden)
     # If a user was specified, let's add it to the credentials for the SMBServer. If no user is specified, anonymous
     # connections will be allowed
     if options.username is not None:
